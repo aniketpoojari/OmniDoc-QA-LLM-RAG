@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Assistant</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- DOMPurify for sanitizing HTML -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="bg-primary text-white p-4 mb-4 rounded shadow">
+            <h1 class="text-center mb-0">Research Assistant</h1>
+        </div>
+        
+        <div class="row g-4">
+            <!-- Left column - Document management -->
+            <div class="col-md-4">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-white">
+                        <h4 class="card-title mb-0">Add Documents</h4>
+                    </div>
+                    <div class="card-body document-section">
+                        <div class="mb-3">
+                            <select id="docTypeSelector" class="form-select">
+                                <option value="PDF">PDF</option>
+                                <option value="Website">Website</option>
+                            </select>
+                        </div>
+                        
+                        <!-- PDF Upload -->
+                        <div id="pdfUploader" class="document-upload mb-4">
+                            <form id="pdfForm" class="p-3 bg-light rounded">
+                                <div class="mb-3">
+                                    <label for="pdfFile" class="form-label">Select PDF file</label>
+                                    <input class="form-control" type="file" id="pdfFile" name="file" accept=".pdf">
+                                </div>
+                                <button type="submit" id="uploadPdfBtn" class="btn btn-primary">
+                                    <i class="bi bi-upload"></i> Upload
+                                </button>
+                            </form>
+                            <div id="pdfUploadStatus" class="mt-2"></div>
+                        </div>
+                        
+                        <!-- Website Processing -->
+                        <div id="websiteUploader" class="document-upload mb-4" style="display: none;">
+                            <div class="p-3 bg-light rounded">
+                                <div class="mb-3">
+                                    <label for="websiteUrl" class="form-label">Website URL</label>
+                                    <input type="text" id="websiteUrl" class="form-control" placeholder="Enter website URL">
+                                </div>
+                                <button id="processWebsiteBtn" class="btn btn-primary">
+                                    <i class="bi bi-globe"></i> Process Website
+                                </button>
+                            </div>
+                            <div id="websiteProcessStatus" class="mt-2"></div>
+                        </div>
+                        
+                        <hr>
+                        
+                        <h5 class="mb-3">Uploaded Documents</h5>
+                        <div id="documentsList" class="documents-list">
+                            {% if uploads %}
+                                {% for id, doc in uploads.items() %}
+                                    <div class="document-item card mb-2" data-id="{{ id }}">
+                                        <div class="card-body py-2 px-3">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <span class="badge bg-info me-2">{{ doc.type }}</span>
+                                                    <span class="text-truncate">{{ doc.name }}</span>
+                                                </div>
+                                                <button class="btn btn-sm btn-danger delete-btn" data-id="{{ id }}">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-docs text-muted fst-italic text-center py-3">
+                                    <i class="bi bi-info-circle"></i> No documents uploaded yet
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right column - Chat interface -->
+            <div class="col-md-8">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-white">
+                        <h4 class="card-title mb-0">Chat with Documents</h4>
+                    </div>
+                    <div class="card-body d-flex flex-column chat-section">
+                        <!-- Chat History -->
+                        <div id="chatHistory" class="chat-history flex-grow-1 mb-3 p-3 border rounded">
+                            {% if chat_history %}
+                                {% for message in chat_history %}
+                                    {% if message.role == 'user' %}
+                                        <div class="message user-message mb-3">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <div class="user-avatar bg-primary text-white rounded-circle me-2">
+                                                    <i class="bi bi-person-fill"></i>
+                                                </div>
+                                                <strong>You</strong>
+                                            </div>
+                                            <div class="message-content">
+                                                {{ message.content }}
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <div class="message assistant-message mb-3">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <div class="assistant-avatar bg-success text-white rounded-circle me-2">
+                                                    <i class="bi bi-robot"></i>
+                                                </div>
+                                                <strong>Assistant</strong>
+                                            </div>
+                                            <div class="message-content">
+                                                {{ message.content|safe }}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-chat text-muted fst-italic text-center py-5">
+                                    <i class="bi bi-chat-dots"></i>
+                                    <p>Ask questions about your documents to start a conversation</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Chat Input -->
+                        <div class="chat-input p-3 bg-light rounded">
+                            <div class="mb-3">
+                                <textarea id="questionInput" class="form-control" rows="3" 
+                                          placeholder="Ask a question about your documents..." 
+                                          {% if not uploads %}disabled{% endif %}></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <div id="chatStatus"></div>
+                                <div class="buttons">
+                                    <button id="clearChat" class="btn btn-outline-secondary me-2">
+                                        <i class="bi bi-trash"></i> Clear Chat
+                                    </button>
+                                    <button id="askButton" class="btn btn-primary" {% if not uploads %}disabled{% endif %}>
+                                        <i class="bi bi-send"></i> Ask
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>
