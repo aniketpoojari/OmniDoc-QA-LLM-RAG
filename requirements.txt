@@ -16,6 +16,6 @@ PyMuPDF
 tabula-py
 python-dotenv
 werkzeug
-prometheus_client
+huggingface_hub
 streamlit
 plotly

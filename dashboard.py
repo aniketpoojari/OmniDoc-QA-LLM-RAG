@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime, timedelta
 import plotly.express as px
+from huggingface_hub import hf_hub_download
 
 # Page configuration
 st.set_page_config(
@@ -28,19 +29,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-LOG_FILE = 'logs/rag_requests.jsonl'
+HF_REPO = "aniketp2009gmail/omnidoc-qa-logs"
 COST_PER_1K_TOKENS = 0.0001  # Example pricing
 
 def load_data():
-    if not os.path.exists(LOG_FILE):
+    try:
+        log_path = hf_hub_download(
+            repo_id=HF_REPO,
+            filename="rag_requests.jsonl",
+            repo_type="dataset",
+            token=os.getenv("HF_TOKEN"),
+        )
+    except Exception:
         return pd.DataFrame()
 
     data = []
-    with open(LOG_FILE, 'r') as f:
+    with open(log_path, 'r') as f:
         for line in f:
             try:
-                data.append(json.loads(line))
-            except:
+                entry = json.loads(line)
+                if entry.get("type") == "request":
+                    data.append(entry)
+            except Exception:
                 continue
 
     if not data:

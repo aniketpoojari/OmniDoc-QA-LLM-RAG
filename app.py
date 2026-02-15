@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify
 import uuid
 import re
 import os
@@ -9,10 +9,7 @@ from models.vector_store import VectorStore
 from services.llm_service import LLMService
 from services.pdf_extraction_service import extract_from_pdf
 from services.website_extraction_service import extract_content_from_website
-from services.monitoring_service import (
-    REQUEST_COUNT, REQUEST_LATENCY, ERROR_RATE, 
-    log_request, get_metrics_data, get_stats_summary, record_feedback
-)
+from services.monitoring_service import log_request, record_feedback
 
 load_dotenv(override=True)
 
@@ -41,19 +38,6 @@ def index():
                            uploads=uploads, 
                            chat_history=chat_history)
 
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy", "timestamp": time.time()})
-
-@app.route('/metrics')
-def metrics():
-    data, content_type = get_metrics_data()
-    return Response(data, content_type=content_type)
-
-@app.route('/stats')
-def stats():
-    return jsonify(get_stats_summary())
-
 @app.route('/feedback', methods=['POST'])
 def feedback():
     data = request.get_json()
@@ -65,73 +49,22 @@ def feedback():
 
 @app.route('/upload_pdf', methods=['POST'])
 def upload_pdf():
-    start_time = time.time()
-    try:
-        if 'file' not in request.files:
-            ERROR_RATE.labels(error_type='upload_no_file').inc()
-            return jsonify({'status': 'error', 'message': 'No file part'})
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            ERROR_RATE.labels(error_type='upload_empty_filename').inc()
-            return jsonify({'status': 'error', 'message': 'No selected file'})
-        
-        if file and file.filename.endswith('.pdf'):
-            filename = secure_filename(file.filename)
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'})
 
-            content = extract_from_pdf(file)
-            
-            # Generate unique ID for document
-            custom_id = str(uuid.uuid4())
-            
-            # Add to RAG
-            vector_store.add_text_to_rag(content['text'], custom_id)
-            for table in content['tables']:
-                ans = llm_service.extract_info_from_table(table)
-                if ans == False or ans == None:
-                    continue
-                vector_store.add_text_to_rag(ans, custom_id)
-            
-            # Store in upload 
-            uploads[custom_id] = {
-                "name": filename,
-                "type": "PDF"
-            }
-            
-            REQUEST_COUNT.labels(endpoint='/upload_pdf', status='success').inc()
-            return jsonify({
-                'status': 'success', 
-                'message': 'PDF uploaded and processed',
-                'document': {
-                    'id': custom_id,
-                    'name': filename,
-                    'type': 'PDF'
-                }
-            })
-        
-        ERROR_RATE.labels(error_type='invalid_file_type').inc()
-        return jsonify({'status': 'error', 'message': 'Invalid file type'})
-    finally:
-        REQUEST_LATENCY.labels(endpoint='/upload_pdf').observe(time.time() - start_time)
+    file = request.files['file']
 
-@app.route('/process_website', methods=['POST'])
-def process_website():
-    start_time = time.time()
-    data = request.get_json()
-    url = data.get('url')
-    
-    if not url:
-        ERROR_RATE.labels(error_type='missing_url').inc()
-        return jsonify({'status': 'error', 'message': 'No URL provided'})
-    
-    try:
-        # Process website
-        content = extract_content_from_website(url)
-        
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'})
+
+    if file and file.filename.endswith('.pdf'):
+        filename = secure_filename(file.filename)
+
+        content = extract_from_pdf(file)
+
         # Generate unique ID for document
         custom_id = str(uuid.uuid4())
-        
+
         # Add to RAG
         vector_store.add_text_to_rag(content['text'], custom_id)
         for table in content['tables']:
@@ -139,15 +72,52 @@ def process_website():
             if ans == False or ans == None:
                 continue
             vector_store.add_text_to_rag(ans, custom_id)
-        
+
+        # Store in upload
+        uploads[custom_id] = {
+            "name": filename,
+            "type": "PDF"
+        }
+
+        return jsonify({
+            'status': 'success',
+            'message': 'PDF uploaded and processed',
+            'document': {
+                'id': custom_id,
+                'name': filename,
+                'type': 'PDF'
+            }
+        })
+
+    return jsonify({'status': 'error', 'message': 'Invalid file type'})
+
+@app.route('/process_website', methods=['POST'])
+def process_website():
+    data = request.get_json()
+    url = data.get('url')
+
+    if not url:
+        return jsonify({'status': 'error', 'message': 'No URL provided'})
+
+    try:
+        content = extract_content_from_website(url)
+
+        custom_id = str(uuid.uuid4())
+
+        vector_store.add_text_to_rag(content['text'], custom_id)
+        for table in content['tables']:
+            ans = llm_service.extract_info_from_table(table)
+            if ans == False or ans == None:
+                continue
+            vector_store.add_text_to_rag(ans, custom_id)
+
         uploads[custom_id] = {
             "name": url,
             "type": "Website"
         }
 
-        REQUEST_COUNT.labels(endpoint='/process_website', status='success').inc()
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'message': 'Website processed',
             'document': {
                 'id': custom_id,
@@ -156,10 +126,7 @@ def process_website():
             }
         })
     except Exception as e:
-        ERROR_RATE.labels(error_type='website_processing_error').inc()
         return jsonify({'status': 'error', 'message': f'Error processing website: {str(e)}'})
-    finally:
-        REQUEST_LATENCY.labels(endpoint='/process_website').observe(time.time() - start_time)
 
 @app.route('/delete_document', methods=['POST'])
 def delete_document():
@@ -195,12 +162,9 @@ def ask_question():
     question = data.get('question')
     
     if not question:
-        ERROR_RATE.labels(error_type='missing_question').inc()
         return jsonify({'status': 'error', 'message': 'No question provided'})
-    
-    # Check if there are any documents
+
     if not uploads:
-        ERROR_RATE.labels(error_type='no_documents').inc()
         return jsonify({'status': 'error', 'message': 'Please upload at least one document first'})
     
     try:
@@ -216,9 +180,7 @@ def ask_question():
         chat_history.append({"role": "assistant", "content": response_html})
         
         latency = time.time() - start_time
-        REQUEST_LATENCY.labels(endpoint='/ask_question').observe(latency)
-        REQUEST_COUNT.labels(endpoint='/ask_question', status='success').inc()
-        
+
         # Log the request
         log_request(
             query=question,
@@ -240,7 +202,6 @@ def ask_question():
             }
         })
     except Exception as e:
-        ERROR_RATE.labels(error_type='ask_question_error').inc()
         log_request(
             query=question,
             latency=time.time() - start_time,
