@@ -47,9 +47,7 @@ def load_data():
     with open(log_path, 'r') as f:
         for line in f:
             try:
-                entry = json.loads(line)
-                if entry.get("type") == "request":
-                    data.append(entry)
+                data.append(json.loads(line))
             except Exception:
                 continue
 

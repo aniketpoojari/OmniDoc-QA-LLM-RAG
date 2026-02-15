@@ -22,25 +22,7 @@ def _ensure_repo():
 
 _ensure_repo()
 
-def _make_entry(entry_type, query=None, latency=None, tokens_input=None,
-                tokens_output=None, chunks_retrieved=None, error=None,
-                is_relevant=None):
-    return {
-        "timestamp": time.time(),
-        "type": entry_type,
-        "query": query,
-        "latency": latency,
-        "tokens_input": tokens_input,
-        "tokens_output": tokens_output,
-        "chunks_retrieved": chunks_retrieved,
-        "error": error,
-        "is_relevant": is_relevant,
-    }
-
-def _append_and_push(entry):
-    with _lock:
-        with open(LOGS_FILE, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+def _push():
     try:
         _api.upload_file(
             path_or_fileobj=str(LOGS_FILE),
@@ -60,18 +42,43 @@ def _append_and_push(entry):
         except Exception as e:
             print(f"HF upload error: {e}")
 
-def log_request(query, latency, tokens_input, tokens_output, chunks_retrieved, error=None):
-    entry = _make_entry(
-        "request",
-        query=query,
-        latency=latency,
-        tokens_input=tokens_input,
-        tokens_output=tokens_output,
-        chunks_retrieved=chunks_retrieved,
-        error=str(error) if error else None,
-    )
-    _append_and_push(entry)
+def log_request(query_id, query, answer, latency, tokens_input, tokens_output,
+                chunks_retrieved, error=None):
+    entry = {
+        "id": query_id,
+        "timestamp": time.time(),
+        "query": query,
+        "answer": answer,
+        "latency": latency,
+        "tokens_input": tokens_input,
+        "tokens_output": tokens_output,
+        "chunks_retrieved": chunks_retrieved,
+        "error": str(error) if error else None,
+        "feedback": None,
+    }
+    with _lock:
+        with open(LOGS_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    _push()
 
-def record_feedback(is_relevant):
-    entry = _make_entry("feedback", is_relevant=is_relevant)
-    _append_and_push(entry)
+def record_feedback(query_id, is_relevant):
+    with _lock:
+        # Read all entries, update the matching one
+        entries = []
+        if LOGS_FILE.exists():
+            with open(LOGS_FILE, "r") as f:
+                for line in f:
+                    try:
+                        entries.append(json.loads(line))
+                    except Exception:
+                        continue
+
+        for entry in entries:
+            if entry.get("id") == query_id:
+                entry["feedback"] = is_relevant
+                break
+
+        with open(LOGS_FILE, "w") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+    _push()

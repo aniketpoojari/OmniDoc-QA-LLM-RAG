@@ -160,7 +160,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.status === 'success') {
                     // Add assistant message to chat
-                    addMessageToChat('assistant', response.response, response.metrics);
+                    addMessageToChat('assistant', response.response, response.metrics, response.query_id);
                     
                     // Clear status
                     $('#chatStatus').html('');
@@ -179,7 +179,7 @@ $(document).ready(function() {
     }
     
     // Function to add message to chat
-    function addMessageToChat(role, content, metrics) {
+    function addMessageToChat(role, content, metrics, queryId) {
         // Remove no-chat message if present
         $('.no-chat').remove();
         
@@ -225,10 +225,10 @@ $(document).ready(function() {
                     </div>
                     ${metricsHTML}
                     <div class="feedback-buttons mt-2">
-                        <button class="btn btn-sm btn-outline-success feedback-btn" data-relevant="true">
+                        <button class="btn btn-sm btn-outline-success feedback-btn" data-relevant="true" data-query-id="${queryId}">
                             <i class="bi bi-hand-thumbs-up"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger feedback-btn" data-relevant="false">
+                        <button class="btn btn-sm btn-outline-danger feedback-btn" data-relevant="false" data-query-id="${queryId}">
                             <i class="bi bi-hand-thumbs-down"></i>
                         </button>
                     </div>
@@ -245,13 +245,14 @@ $(document).ready(function() {
     // Feedback button handler
     $(document).on('click', '.feedback-btn', function() {
         const isRelevant = $(this).data('relevant');
+        const queryId = $(this).data('query-id');
         const $btnContainer = $(this).parent();
-        
+
         $.ajax({
             url: '/feedback',
             type: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ relevant: isRelevant }),
+            data: JSON.stringify({ query_id: queryId, relevant: isRelevant }),
             success: function(response) {
                 if (response.status === 'success') {
                     $btnContainer.html('<span class="text-muted small">Thank you for your feedback!</span>');

@@ -41,11 +41,12 @@ def index():
 @app.route('/feedback', methods=['POST'])
 def feedback():
     data = request.get_json()
+    query_id = data.get('query_id')
     is_relevant = data.get('relevant')
-    if is_relevant is not None:
-        record_feedback(is_relevant)
+    if query_id is not None and is_relevant is not None:
+        record_feedback(query_id, is_relevant)
         return jsonify({'status': 'success'})
-    return jsonify({'status': 'error', 'message': 'Missing feedback field'}), 400
+    return jsonify({'status': 'error', 'message': 'Missing query_id or feedback field'}), 400
 
 @app.route('/upload_pdf', methods=['POST'])
 def upload_pdf():
@@ -167,32 +168,32 @@ def ask_question():
     if not uploads:
         return jsonify({'status': 'error', 'message': 'Please upload at least one document first'})
     
+    query_id = str(uuid.uuid4())
+
     try:
-        # Get AI response
         res = llm_service.ask_question(vector_store.vector_db, question)
         response_text = res['result']
-        
-        # Convert to HTML
         response_html = convert_to_html(response_text)
-        
-        # Add messages to chat history
+
         chat_history.append({"role": "user", "content": question})
         chat_history.append({"role": "assistant", "content": response_html})
-        
+
         latency = time.time() - start_time
 
-        # Log the request
         log_request(
+            query_id=query_id,
             query=question,
+            answer=response_text,
             latency=latency,
             tokens_input=res['tokens_input'],
             tokens_output=res['tokens_output'],
             chunks_retrieved=res['chunks_count']
         )
-        
+
         return jsonify({
             'status': 'success',
             'response': response_html,
+            'query_id': query_id,
             'chat_history': chat_history,
             'metrics': {
                 'latency': round(latency, 2),
@@ -203,7 +204,9 @@ def ask_question():
         })
     except Exception as e:
         log_request(
+            query_id=query_id,
             query=question,
+            answer=None,
             latency=time.time() - start_time,
             tokens_input=0,
             tokens_output=0,
