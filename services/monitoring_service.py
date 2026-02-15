@@ -1,23 +1,38 @@
 import time
 import json
 import os
+import threading
 from pathlib import Path
-from huggingface_hub import CommitScheduler
+from huggingface_hub import HfApi
 
 HF_TOKEN = os.getenv("HF_TOKEN")
+REPO_ID = "aniketp2009gmail/omnidoc-qa-logs"
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(exist_ok=True)
 LOGS_FILE = LOGS_DIR / "rag_requests.jsonl"
 
-scheduler = CommitScheduler(
-    repo_id="aniketp2009gmail/omnidoc-qa-logs",
-    repo_type="dataset",
-    folder_path=LOGS_DIR,
-    path_in_repo=".",
-    token=HF_TOKEN,
-    every=2,
-    private=True,
-)
+_lock = threading.Lock()
+_api = HfApi(token=HF_TOKEN)
+
+# Ensure the dataset repo exists
+try:
+    _api.create_repo(repo_id=REPO_ID, repo_type="dataset", private=True, exist_ok=True)
+except Exception:
+    pass
+
+def _append_and_push(entry):
+    with _lock:
+        with open(LOGS_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    try:
+        _api.upload_file(
+            path_or_fileobj=str(LOGS_FILE),
+            path_in_repo="rag_requests.jsonl",
+            repo_id=REPO_ID,
+            repo_type="dataset",
+        )
+    except Exception as e:
+        print(f"HF upload error: {e}")
 
 def log_request(query, latency, tokens_input, tokens_output, chunks_retrieved, error=None):
     entry = {
@@ -30,9 +45,7 @@ def log_request(query, latency, tokens_input, tokens_output, chunks_retrieved, e
         "chunks_retrieved": chunks_retrieved,
         "error": str(error) if error else None,
     }
-    with scheduler.lock:
-        with open(LOGS_FILE, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+    _append_and_push(entry)
 
 def record_feedback(is_relevant):
     entry = {
@@ -40,6 +53,4 @@ def record_feedback(is_relevant):
         "type": "feedback",
         "is_relevant": is_relevant,
     }
-    with scheduler.lock:
-        with open(LOGS_FILE, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+    _append_and_push(entry)
