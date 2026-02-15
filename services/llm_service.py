@@ -4,7 +4,6 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import time
-from services.monitoring_service import RETRIEVAL_LATENCY, CHUNKS_RETRIEVED, TOKEN_USAGE
 
 COMPARATIVE_KEYWORDS = re.compile(
     r'\b(compare|comparison|contrast|difference|differences|differ|versus|vs\.?|'
@@ -79,9 +78,6 @@ class LLMService:
                     balanced_docs.extend(src_docs[:per_source])
                 docs = balanced_docs
 
-        RETRIEVAL_LATENCY.observe(retrieval_time)
-        CHUNKS_RETRIEVED.observe(len(docs))
-
         # Build context from retrieved documents
         context = "\n\n".join(doc.page_content for doc in docs)
 
@@ -105,9 +101,6 @@ class LLMService:
         usage = response.response_metadata.get("token_usage", {})
         tokens_input = usage.get("prompt_tokens", 0)
         tokens_output = usage.get("completion_tokens", 0)
-
-        TOKEN_USAGE.labels(type='input').inc(tokens_input)
-        TOKEN_USAGE.labels(type='output').inc(tokens_output)
 
         return {
             'result': response.content,
