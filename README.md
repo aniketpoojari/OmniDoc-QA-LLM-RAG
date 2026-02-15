@@ -1,3 +1,12 @@
+---
+title: OmniDoc QA
+emoji: 🧠
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+---
+
 # 🧠 Multi-Modal RAG Question Answering System
 
 **A comprehensive Flask-based web application that enables intelligent document analysis through RAG (Retrieval-Augmented Generation) technology. Upload PDFs or process websites to create an interactive Q&A system powered by large language models.**

@@ -1,13 +1,18 @@
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+import time
+from services.monitoring_service import EMBEDDING_LATENCY
 
 class VectorStore:
     def __init__(self):
 
         # Initialize embedding model and ChromaDB
+        start_time = time.time()
         self.embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
+        EMBEDDING_LATENCY.observe(time.time() - start_time)
+        
         self.vector_db = Chroma(embedding_function=self.embeddings)
 
     # Function to add text to RAG
@@ -25,7 +30,9 @@ class VectorStore:
             documents.append(doc)
         
         # Add documents to ChromaDB with the custom ID
+        start_time = time.time()
         self.vector_db.add_documents(documents)
+        EMBEDDING_LATENCY.observe(time.time() - start_time)
 
 
     def delete_documents_by_custom_id(self, custom_id):

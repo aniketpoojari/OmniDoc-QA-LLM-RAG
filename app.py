@@ -1,20 +1,31 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import uuid
 import re
 import os
-from dotenv import load_dotenv
+import time
+from dotenv import load_dotenv, dotenv_values
 from werkzeug.utils import secure_filename
 from models.vector_store import VectorStore
 from services.llm_service import LLMService
 from services.pdf_extraction_service import extract_from_pdf
 from services.website_extraction_service import extract_content_from_website
+from services.monitoring_service import (
+    REQUEST_COUNT, REQUEST_LATENCY, ERROR_RATE, 
+    log_request, get_metrics_data, get_stats_summary, record_feedback
+)
 
-load_dotenv()
+load_dotenv(override=True)
+
+# Retrieve the API key — prioritize .env file over system env vars
+_dotenv_vars = dotenv_values('.env')
+api_key = _dotenv_vars.get('GROQ_API_KEY') or os.getenv('GROQ_API_KEY')
+if not api_key:
+    print("CRITICAL: GROQ_API_KEY not found in .env or environment variables!")
+else:
+    source = ".env file" if 'GROQ_API_KEY' in _dotenv_vars else "system env"
+    print(f"DEBUG: GROQ_API_KEY loaded from {source}, starting with: {api_key[:5]}...")
 
 app = Flask(__name__)
-
-# Retrieve the API key from the environment
-api_key = os.getenv('GROQ_API_KEY')
 vector_store = VectorStore()
 llm_service = LLMService(api_key)
 chat_history = []
@@ -30,56 +41,88 @@ def index():
                            uploads=uploads, 
                            chat_history=chat_history)
 
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy", "timestamp": time.time()})
+
+@app.route('/metrics')
+def metrics():
+    data, content_type = get_metrics_data()
+    return Response(data, content_type=content_type)
+
+@app.route('/stats')
+def stats():
+    return jsonify(get_stats_summary())
+
+@app.route('/feedback', methods=['POST'])
+def feedback():
+    data = request.get_json()
+    is_relevant = data.get('relevant')
+    if is_relevant is not None:
+        record_feedback(is_relevant)
+        return jsonify({'status': 'success'})
+    return jsonify({'status': 'error', 'message': 'Missing feedback field'}), 400
+
 @app.route('/upload_pdf', methods=['POST'])
 def upload_pdf():
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file part'})
-    
-    file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'status': 'error', 'message': 'No selected file'})
-    
-    if file and file.filename.endswith('.pdf'):
-        filename = secure_filename(file.filename)
+    start_time = time.time()
+    try:
+        if 'file' not in request.files:
+            ERROR_RATE.labels(error_type='upload_no_file').inc()
+            return jsonify({'status': 'error', 'message': 'No file part'})
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            ERROR_RATE.labels(error_type='upload_empty_filename').inc()
+            return jsonify({'status': 'error', 'message': 'No selected file'})
+        
+        if file and file.filename.endswith('.pdf'):
+            filename = secure_filename(file.filename)
 
-        content = extract_from_pdf(file)
-        
-        # Generate unique ID for document
-        custom_id = str(uuid.uuid4())
-        
-        # Add to RAG
-        vector_store.add_text_to_rag(content['text'], custom_id)
-        for table in content['tables']:
-            ans = llm_service.extract_info_from_table(table)
-            if ans == False or ans == None:
-                continue
-            vector_store.add_text_to_rag(ans, custom_id)
-        
-        # Store in upload 
-        uploads[custom_id] = {
-            "name": filename,
-            "type": "PDF"
-        }
-        
-        return jsonify({
-            'status': 'success', 
-            'message': 'PDF uploaded and processed',
-            'document': {
-                'id': custom_id,
-                'name': filename,
-                'type': 'PDF'
+            content = extract_from_pdf(file)
+            
+            # Generate unique ID for document
+            custom_id = str(uuid.uuid4())
+            
+            # Add to RAG
+            vector_store.add_text_to_rag(content['text'], custom_id)
+            for table in content['tables']:
+                ans = llm_service.extract_info_from_table(table)
+                if ans == False or ans == None:
+                    continue
+                vector_store.add_text_to_rag(ans, custom_id)
+            
+            # Store in upload 
+            uploads[custom_id] = {
+                "name": filename,
+                "type": "PDF"
             }
-        })
-    
-    return jsonify({'status': 'error', 'message': 'Invalid file type'})
+            
+            REQUEST_COUNT.labels(endpoint='/upload_pdf', status='success').inc()
+            return jsonify({
+                'status': 'success', 
+                'message': 'PDF uploaded and processed',
+                'document': {
+                    'id': custom_id,
+                    'name': filename,
+                    'type': 'PDF'
+                }
+            })
+        
+        ERROR_RATE.labels(error_type='invalid_file_type').inc()
+        return jsonify({'status': 'error', 'message': 'Invalid file type'})
+    finally:
+        REQUEST_LATENCY.labels(endpoint='/upload_pdf').observe(time.time() - start_time)
 
 @app.route('/process_website', methods=['POST'])
 def process_website():
+    start_time = time.time()
     data = request.get_json()
     url = data.get('url')
     
     if not url:
+        ERROR_RATE.labels(error_type='missing_url').inc()
         return jsonify({'status': 'error', 'message': 'No URL provided'})
     
     try:
@@ -102,6 +145,7 @@ def process_website():
             "type": "Website"
         }
 
+        REQUEST_COUNT.labels(endpoint='/process_website', status='success').inc()
         return jsonify({
             'status': 'success', 
             'message': 'Website processed',
@@ -112,7 +156,10 @@ def process_website():
             }
         })
     except Exception as e:
+        ERROR_RATE.labels(error_type='website_processing_error').inc()
         return jsonify({'status': 'error', 'message': f'Error processing website: {str(e)}'})
+    finally:
+        REQUEST_LATENCY.labels(endpoint='/process_website').observe(time.time() - start_time)
 
 @app.route('/delete_document', methods=['POST'])
 def delete_document():
@@ -143,33 +190,65 @@ def convert_to_html(text):
 
 @app.route('/ask_question', methods=['POST'])
 def ask_question():
+    start_time = time.time()
     data = request.get_json()
     question = data.get('question')
     
     if not question:
+        ERROR_RATE.labels(error_type='missing_question').inc()
         return jsonify({'status': 'error', 'message': 'No question provided'})
     
     # Check if there are any documents
     if not uploads:
+        ERROR_RATE.labels(error_type='no_documents').inc()
         return jsonify({'status': 'error', 'message': 'Please upload at least one document first'})
     
     try:
         # Get AI response
-        response = llm_service.ask_question(vector_store.vector_db,question)['result']
+        res = llm_service.ask_question(vector_store.vector_db, question)
+        response_text = res['result']
         
         # Convert to HTML
-        response = convert_to_html(response)
+        response_html = convert_to_html(response_text)
         
         # Add messages to chat history
         chat_history.append({"role": "user", "content": question})
-        chat_history.append({"role": "assistant", "content": response})
+        chat_history.append({"role": "assistant", "content": response_html})
+        
+        latency = time.time() - start_time
+        REQUEST_LATENCY.labels(endpoint='/ask_question').observe(latency)
+        REQUEST_COUNT.labels(endpoint='/ask_question', status='success').inc()
+        
+        # Log the request
+        log_request(
+            query=question,
+            latency=latency,
+            tokens_input=res['tokens_input'],
+            tokens_output=res['tokens_output'],
+            chunks_retrieved=res['chunks_count']
+        )
         
         return jsonify({
             'status': 'success',
-            'response': response,
-            'chat_history': chat_history
+            'response': response_html,
+            'chat_history': chat_history,
+            'metrics': {
+                'latency': round(latency, 2),
+                'chunks_count': res['chunks_count'],
+                'tokens_input': res['tokens_input'],
+                'tokens_output': res['tokens_output']
+            }
         })
     except Exception as e:
+        ERROR_RATE.labels(error_type='ask_question_error').inc()
+        log_request(
+            query=question,
+            latency=time.time() - start_time,
+            tokens_input=0,
+            tokens_output=0,
+            chunks_retrieved=0,
+            error=e
+        )
         return jsonify({'status': 'error', 'message': f'Error getting response: {str(e)}'})
 
 @app.route('/clear_chat', methods=['POST'])
@@ -179,4 +258,5 @@ def clear_chat():
     return jsonify({'status': 'success', 'message': 'Chat history cleared'})
 
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.getenv('PORT', 7860))
+    app.run(host="0.0.0.0", port=port)

@@ -7,7 +7,7 @@ from PIL import Image
 def extract_from_pdf(pdf_file):
 
     # Open the PDF file
-    doc = doc = fitz.open(stream=BytesIO(pdf_file.read()))
+    doc = fitz.open(stream=BytesIO(pdf_file.read()))
     
     # Extract text from each page
     text = ""
@@ -18,8 +18,9 @@ def extract_from_pdf(pdf_file):
     # Reset the file pointer to the beginning
     pdf_file.seek(0)
 
-    # Extract tables from the PDF file
-    tables = tabula.read_pdf(pdf_file, pages="all", multiple_tables=True, encoding='ISO-8859-1')
+    # Extract tables from the PDF file and convert DataFrames to strings
+    raw_tables = tabula.read_pdf(pdf_file, pages="all", multiple_tables=True, encoding='ISO-8859-1')
+    tables = [df.to_string(index=False) for df in raw_tables]
     
     # Extract images from the PDF
     extracted_images = []

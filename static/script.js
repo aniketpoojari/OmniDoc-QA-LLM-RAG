@@ -160,7 +160,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.status === 'success') {
                     // Add assistant message to chat
-                    addMessageToChat('assistant', response.response);
+                    addMessageToChat('assistant', response.response, response.metrics);
                     
                     // Clear status
                     $('#chatStatus').html('');
@@ -179,7 +179,7 @@ $(document).ready(function() {
     }
     
     // Function to add message to chat
-    function addMessageToChat(role, content) {
+    function addMessageToChat(role, content, metrics) {
         // Remove no-chat message if present
         $('.no-chat').remove();
         
@@ -201,6 +201,17 @@ $(document).ready(function() {
                 </div>
             `;
         } else {
+            let metricsHTML = '';
+            if (metrics) {
+                metricsHTML = `
+                    <div class="metrics-row mt-1">
+                        <span><i class="bi bi-clock"></i> ${metrics.latency}s</span>
+                        <span><i class="bi bi-database"></i> ${metrics.chunks_count} chunks</span>
+                        <span><i class="bi bi-arrow-right-circle"></i> ${metrics.tokens_input} in</span>
+                        <span><i class="bi bi-arrow-left-circle"></i> ${metrics.tokens_output} out</span>
+                    </div>
+                `;
+            }
             messageHTML = `
                 <div class="message assistant-message mb-3">
                     <div class="d-flex align-items-center mb-1">
@@ -212,6 +223,15 @@ $(document).ready(function() {
                     <div class="message-content">
                         ${content}
                     </div>
+                    ${metricsHTML}
+                    <div class="feedback-buttons mt-2">
+                        <button class="btn btn-sm btn-outline-success feedback-btn" data-relevant="true">
+                            <i class="bi bi-hand-thumbs-up"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger feedback-btn" data-relevant="false">
+                            <i class="bi bi-hand-thumbs-down"></i>
+                        </button>
+                    </div>
                 </div>
             `;
         }
@@ -221,6 +241,24 @@ $(document).ready(function() {
         // Scroll to bottom
         $('#chatHistory').scrollTop($('#chatHistory')[0].scrollHeight);
     }
+
+    // Feedback button handler
+    $(document).on('click', '.feedback-btn', function() {
+        const isRelevant = $(this).data('relevant');
+        const $btnContainer = $(this).parent();
+        
+        $.ajax({
+            url: '/feedback',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ relevant: isRelevant }),
+            success: function(response) {
+                if (response.status === 'success') {
+                    $btnContainer.html('<span class="text-muted small">Thank you for your feedback!</span>');
+                }
+            }
+        });
+    });
     
     // Function to add document to list
     function addDocumentToList(doc) {
