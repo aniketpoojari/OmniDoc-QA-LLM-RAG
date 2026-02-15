@@ -246,7 +246,8 @@ $(document).ready(function() {
     $(document).on('click', '.feedback-btn', function() {
         const isRelevant = $(this).data('relevant');
         const queryId = $(this).data('query-id');
-        const $btnContainer = $(this).parent();
+        const $btn = $(this);
+        const $btnContainer = $btn.parent();
 
         $.ajax({
             url: '/feedback',
@@ -255,7 +256,17 @@ $(document).ready(function() {
             data: JSON.stringify({ query_id: queryId, relevant: isRelevant }),
             success: function(response) {
                 if (response.status === 'success') {
-                    $btnContainer.html('<span class="text-muted small">Thank you for your feedback!</span>');
+                    // Reset all buttons in this group
+                    $btnContainer.find('.feedback-btn').removeClass('active btn-success btn-danger')
+                        .addClass(function() {
+                            return $(this).data('relevant') ? 'btn-outline-success' : 'btn-outline-danger';
+                        });
+                    // Highlight selected button
+                    if (isRelevant) {
+                        $btn.removeClass('btn-outline-success').addClass('active btn-success');
+                    } else {
+                        $btn.removeClass('btn-outline-danger').addClass('active btn-danger');
+                    }
                 }
             }
         });
