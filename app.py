@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify
 import uuid
 import re
 import os
@@ -26,16 +26,13 @@ app = Flask(__name__)
 vector_store = VectorStore()
 llm_service = LLMService(api_key)
 
-app.secret_key = os.getenv('SECRET_KEY', 'research_assistant_secret_key')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 
-# Per-session state
+# Per-session state keyed by client-generated session ID
 _sessions = {}
 
 def _get_session_data():
-    if 'sid' not in session:
-        session['sid'] = str(uuid.uuid4())
-    sid = session['sid']
+    sid = request.headers.get('X-Session-Id', 'default')
     if sid not in _sessions:
         _sessions[sid] = {'chat_history': [], 'uploads': {}}
     return _sessions[sid]
@@ -43,10 +40,7 @@ def _get_session_data():
 
 @app.route('/')
 def index():
-    data = _get_session_data()
-    return render_template('index.html',
-                           uploads=data['uploads'],
-                           chat_history=data['chat_history'])
+    return render_template('index.html', uploads={}, chat_history=[])
 
 @app.route('/feedback', methods=['POST'])
 def feedback():

@@ -1,5 +1,15 @@
 // static/js/script.js
 
+// Per-tab session ID
+const SESSION_ID = crypto.randomUUID();
+
+// Send X-Session-Id header with every AJAX request
+$.ajaxSetup({
+    beforeSend: function(xhr) {
+        xhr.setRequestHeader('X-Session-Id', SESSION_ID);
+    }
+});
+
 $(document).ready(function() {
     // Document type selector
     $('#docTypeSelector').change(function() {
