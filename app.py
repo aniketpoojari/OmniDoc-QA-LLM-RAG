@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 import uuid
 import re
 import os
@@ -25,18 +25,28 @@ else:
 app = Flask(__name__)
 vector_store = VectorStore()
 llm_service = LLMService(api_key)
-chat_history = []
-uploads = {}
 
-app.secret_key = 'research_assistant_secret_key'
+app.secret_key = os.getenv('SECRET_KEY', 'research_assistant_secret_key')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
+
+# Per-session state
+_sessions = {}
+
+def _get_session_data():
+    if 'sid' not in session:
+        session['sid'] = str(uuid.uuid4())
+    sid = session['sid']
+    if sid not in _sessions:
+        _sessions[sid] = {'chat_history': [], 'uploads': {}}
+    return _sessions[sid]
 
 
 @app.route('/')
 def index():
-    return render_template('index.html', 
-                           uploads=uploads, 
-                           chat_history=chat_history)
+    data = _get_session_data()
+    return render_template('index.html',
+                           uploads=data['uploads'],
+                           chat_history=data['chat_history'])
 
 @app.route('/feedback', methods=['POST'])
 def feedback():
@@ -50,6 +60,7 @@ def feedback():
 
 @app.route('/upload_pdf', methods=['POST'])
 def upload_pdf():
+    data = _get_session_data()
     if 'file' not in request.files:
         return jsonify({'status': 'error', 'message': 'No file part'})
 
@@ -63,10 +74,8 @@ def upload_pdf():
 
         content = extract_from_pdf(file)
 
-        # Generate unique ID for document
         custom_id = str(uuid.uuid4())
 
-        # Add to RAG
         vector_store.add_text_to_rag(content['text'], custom_id)
         for table in content['tables']:
             ans = llm_service.extract_info_from_table(table)
@@ -74,8 +83,7 @@ def upload_pdf():
                 continue
             vector_store.add_text_to_rag(ans, custom_id)
 
-        # Store in upload
-        uploads[custom_id] = {
+        data['uploads'][custom_id] = {
             "name": filename,
             "type": "PDF"
         }
@@ -94,8 +102,9 @@ def upload_pdf():
 
 @app.route('/process_website', methods=['POST'])
 def process_website():
-    data = request.get_json()
-    url = data.get('url')
+    sess = _get_session_data()
+    req_data = request.get_json()
+    url = req_data.get('url')
 
     if not url:
         return jsonify({'status': 'error', 'message': 'No URL provided'})
@@ -112,7 +121,7 @@ def process_website():
                 continue
             vector_store.add_text_to_rag(ans, custom_id)
 
-        uploads[custom_id] = {
+        sess['uploads'][custom_id] = {
             "name": url,
             "type": "Website"
         }
@@ -131,21 +140,18 @@ def process_website():
 
 @app.route('/delete_document', methods=['POST'])
 def delete_document():
-    data = request.get_json()
-    custom_id = data.get('id')
-    
+    sess = _get_session_data()
+    req_data = request.get_json()
+    custom_id = req_data.get('id')
+
     if not custom_id:
         return jsonify({'status': 'error', 'message': 'No document ID provided'})
-    
-    if custom_id in uploads:
-        # Delete document from RAG
+
+    if custom_id in sess['uploads']:
         vector_store.delete_documents_by_custom_id(custom_id)
-        
-        # Remove from session
-        del uploads[custom_id]
-        
+        del sess['uploads'][custom_id]
         return jsonify({'status': 'success', 'message': 'Document deleted'})
-    
+
     return jsonify({'status': 'error', 'message': 'Document not found'})
 
 
@@ -158,16 +164,17 @@ def convert_to_html(text):
 
 @app.route('/ask_question', methods=['POST'])
 def ask_question():
+    sess = _get_session_data()
     start_time = time.time()
-    data = request.get_json()
-    question = data.get('question')
-    
+    req_data = request.get_json()
+    question = req_data.get('question')
+
     if not question:
         return jsonify({'status': 'error', 'message': 'No question provided'})
 
-    if not uploads:
+    if not sess['uploads']:
         return jsonify({'status': 'error', 'message': 'Please upload at least one document first'})
-    
+
     query_id = str(uuid.uuid4())
 
     try:
@@ -175,8 +182,8 @@ def ask_question():
         response_text = res['result']
         response_html = convert_to_html(response_text)
 
-        chat_history.append({"role": "user", "content": question})
-        chat_history.append({"role": "assistant", "content": response_html})
+        sess['chat_history'].append({"role": "user", "content": question})
+        sess['chat_history'].append({"role": "assistant", "content": response_html})
 
         latency = time.time() - start_time
 
@@ -194,7 +201,7 @@ def ask_question():
             'status': 'success',
             'response': response_html,
             'query_id': query_id,
-            'chat_history': chat_history,
+            'chat_history': sess['chat_history'],
             'metrics': {
                 'latency': round(latency, 2),
                 'chunks_count': res['chunks_count'],
@@ -217,8 +224,8 @@ def ask_question():
 
 @app.route('/clear_chat', methods=['POST'])
 def clear_chat():
-    global chat_history
-    chat_history = []
+    sess = _get_session_data()
+    sess['chat_history'] = []
     return jsonify({'status': 'success', 'message': 'Chat history cleared'})
 
 if __name__ == "__main__":
