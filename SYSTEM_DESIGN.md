@@ -143,6 +143,11 @@ Groq provides free-tier access with fast inference on open-weight models. For a 
 ### Why immediate uploads instead of batching?
 Traffic on a portfolio app is low. Immediate uploads ensure no data loss if the container restarts (HF Spaces containers are ephemeral). The latency overhead of one `upload_file()` call per query is acceptable at this scale.
 
+### Why client-side session IDs instead of Flask sessions?
+Flask's default cookie-based sessions failed on Hugging Face Spaces — the reverse proxy strips or doesn't forward `Set-Cookie` headers, so the session cookie was lost between requests. Users would upload a document, then get "Please upload at least one document first" when asking a question because the backend saw a new (empty) session each time.
+
+The fix: JavaScript generates a UUID per browser tab (`crypto.randomUUID()`) and sends it as an `X-Session-Id` header with every AJAX request via `$.ajaxSetup`. The backend keys into a server-side dict using this header. This is cookie-free, proxy-safe, and gives true per-tab isolation as a bonus — two tabs in the same browser get independent sessions.
+
 ### Why two-step table processing?
 Raw Tabula output often includes malformed or empty tables. The classifier step filters noise before the extractor step spends tokens serializing table content. This keeps the vector store clean and avoids polluting retrieval with garbage chunks.
 
