@@ -7,65 +7,91 @@ sdk: docker
 app_port: 7860
 ---
 
-# 🧠 Multi-Modal RAG Question Answering System
+# OmniDoc QA — Multi-Modal RAG System
 
-**A comprehensive Flask-based web application that enables intelligent document analysis through RAG (Retrieval-Augmented Generation) technology. Upload PDFs or process websites to create an interactive Q&A system powered by large language models.**
+A production-style RAG (Retrieval-Augmented Generation) application that lets users upload PDFs or websites, then ask natural-language questions over the ingested content. Built with Flask, LangChain, ChromaDB, and Groq.
 
-## 🚀 Features
+**[Try it on Hugging Face Spaces](https://huggingface.co/spaces/aniketp2009gmail/OmniDoc-QA-LLM-RAG)**
 
-- **Multi-Format Document Support**: Process both PDF files and websites seamlessly
-- **Advanced Text Extraction**: Extract text, tables, and images from documents with high accuracy
-- **RAG Implementation**: Leverage ChromaDB vector storage with HuggingFace embeddings for intelligent document retrieval
-- **LLM Integration**: Powered by Groq's Gemma2-9B model for natural language understanding and generation
-- **Interactive Chat Interface**: Real-time Q&A with your documents through a modern Bootstrap-based UI
-- **Table Processing**: Intelligent table detection and extraction with LLM-based analysis
-- **Document Management**: Add, view, and delete documents with persistent storage
-- **Responsive Design**: Mobile-friendly interface with smooth animations and loading states
-- **Session Management**: Maintain chat history and document state across interactions
+## Features
 
-## 🔧 Quickstart
+- **Multi-format ingestion** — Upload PDFs or paste a website URL; text, tables, and structure are extracted automatically
+- **RAG pipeline** — Documents are chunked, embedded with `all-MiniLM-L6-v2`, stored in ChromaDB, and retrieved at query time
+- **Comparative queries** — Detects cross-document questions and balances retrieval across sources
+- **Inline metrics** — Each response shows latency, chunks retrieved, and token usage
+- **Feedback loop** — Thumbs up/down per response, stored in a Hugging Face Dataset for analysis
+- **Monitoring dashboard** — Streamlit dashboard pulls logs from HF Dataset to visualize latency trends, token usage, and retrieval quality
 
-### Installation
+## Quickstart
 
-### Environment Setup
 ```bash
-# Add your Groq API key
-echo "GROQ_API_KEY=your_groq_api_key_here" >> .env
-```
-
-### Required Dependencies
-```bash
+# Clone and install
+git clone https://github.com/aniketpoojari/OmniDoc-QA-LLM-RAG.git
+cd OmniDoc-QA-LLM-RAG
 pip install -r requirements.txt
-```
 
-### Running the Application
-```bash
-# Start the Flask development server
+# Set API keys
+echo "GROQ_API_KEY=your_key_here" >> .env
+echo "HF_TOKEN=your_hf_write_token" >> .env
+
+# Run
 python app.py
-
-# Access the application
-# Open your browser and navigate to: http://localhost:5000
+# Open http://localhost:7860
 ```
 
-### Usage Instructions
-1. **Upload Documents**: Choose between PDF upload or website processing
-2. **Document Processing**: The system automatically extracts text, tables, and metadata
-3. **Ask Questions**: Use the chat interface to query your documents intelligently
-4. **Manage Documents**: View uploaded documents and delete them as needed
-5. **Chat History**: Access previous conversations and clear history when needed
+### Monitoring Dashboard
 
-## 📌 Results
+```bash
+streamlit run dashboard.py
+```
 
-### Core Functionality
-- **Document Processing**: Successfully extracts and processes text from PDFs and websites
-- **Vector Storage**: Implements efficient document chunking and embedding storage
-- **Question Answering**: Provides contextually relevant answers based on document content
-- **Table Analysis**: Intelligently processes and extracts structured data from tables
-- **Real-time Interface**: Responsive chat interface with loading states and error handling
+Pulls logs from the HF Dataset and displays latency trends, token costs, retrieval quality, and query history.
 
-### Technical Architecture
-- **Backend**: Flask web framework with modular service architecture
-- **Vector Database**: ChromaDB for efficient similarity search
-- **Embeddings**: HuggingFace sentence-transformers for document representation
-- **LLM**: Groq API integration with Gemma2-9B model
-- **Frontend**: Bootstrap 5 with custom CSS and jQuery for interactivity
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Flask |
+| LLM | Groq API (LLaMA 3.1 8B Instant) |
+| Embeddings | HuggingFace `all-MiniLM-L6-v2` |
+| Vector DB | ChromaDB |
+| Orchestration | LangChain |
+| PDF extraction | PyMuPDF + Tabula |
+| Web extraction | BeautifulSoup4 |
+| Frontend | Bootstrap 5, jQuery, DOMPurify |
+| Logging | Hugging Face Datasets (via `HfApi`) |
+| Deployment | Docker on Hugging Face Spaces |
+| CI/CD | GitHub Actions |
+
+## Project Structure
+
+```
+├── app.py                          # Flask routes and main entry point
+├── models/
+│   └── vector_store.py             # ChromaDB wrapper (chunk, embed, store)
+├── services/
+│   ├── llm_service.py              # Groq LLM integration and RAG chain
+│   ├── pdf_extraction_service.py   # PDF text + table extraction
+│   ├── website_extraction_service.py # Web scraping and content extraction
+│   └── monitoring_service.py       # HF Dataset logging and feedback
+├── templates/
+│   └── index.html                  # Main UI template
+├── static/
+│   ├── script.js                   # Frontend logic (AJAX, chat, feedback)
+│   └── style.css                   # Custom styles
+├── dashboard.py                    # Streamlit monitoring dashboard
+├── Dockerfile                      # HF Spaces deployment
+├── .github/workflows/
+│   └── deploy-hf-spaces.yml        # CI/CD: GitHub → HF Spaces
+└── requirements.txt
+```
+
+See [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) for architecture details and design decisions.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Yes | Groq API key for LLM inference |
+| `HF_TOKEN` | Yes | HuggingFace write token for logging and deployment |
+| `PORT` | No | Server port (default: 7860) |
