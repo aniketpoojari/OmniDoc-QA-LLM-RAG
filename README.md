@@ -9,9 +9,11 @@ app_port: 7860
 
 # OmniDoc QA — Multi-Modal RAG System
 
+[![HuggingFace Space](https://img.shields.io/badge/HuggingFace-Space-orange)](https://huggingface.co/spaces/aniketp2009gmail/OmniDoc-QA-LLM-RAG)
+
 A production-style RAG (Retrieval-Augmented Generation) application that lets users upload PDFs or websites, then ask natural-language questions over the ingested content. Built with Flask, LangChain, ChromaDB, and Groq.
 
-**[Try it on Hugging Face Spaces](https://huggingface.co/spaces/aniketp2009gmail/OmniDoc-QA-LLM-RAG)**
+**🚀 Try it live on Hugging Face Spaces: [OmniDoc QA](https://huggingface.co/spaces/aniketp2009gmail/OmniDoc-QA-LLM-RAG)**
 
 ## Features
 
