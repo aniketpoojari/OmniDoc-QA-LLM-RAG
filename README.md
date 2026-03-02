@@ -9,6 +9,13 @@ app_port: 7860
 
 # OmniDoc QA — Multi-Modal RAG System
 
+![Python](https://img.shields.io/badge/python-3670AD?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Flask](https://img.shields.io/badge/flask-%23000.svg?style=for-the-badge&logo=flask&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-005571?style=for-the-badge)
+![Groq](https://img.shields.io/badge/Groq-orange?style=for-the-badge)
+![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
+![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-yellow?style=for-the-badge)
+
 [![HuggingFace Space](https://img.shields.io/badge/HuggingFace-Space-orange)](https://huggingface.co/spaces/aniketp2009gmail/OmniDoc-QA-LLM-RAG)
 
 A production-style RAG (Retrieval-Augmented Generation) application that lets users upload PDFs or websites, then ask natural-language questions over the ingested content. Built with Flask, LangChain, ChromaDB, and Groq.
